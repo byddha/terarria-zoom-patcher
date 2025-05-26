@@ -14,7 +14,7 @@ EXPECTED_BYTE_VAL = 0x44
 REPLACEMENT_BYTE_VAL = 0x55
 
 if not EXE_PATH:
-    print("Usage: python patch_terraria.py /path/to/Terraria.exe")
+    print("Usage: python patcher.py /path/to/Terraria.exe")
     sys.exit(1)
 
 if not os.path.exists(EXE_PATH):
