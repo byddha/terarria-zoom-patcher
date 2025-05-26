@@ -5,6 +5,9 @@ If you don't want to use this script, you can check out this [Reddit post](https
 ## Requirements:
 Python available in PATH
 
+## Backup
+This script creates a `Terraria.exe.bak` for you before applying the patch. If somehow in the far future this doesn't work anymore, you can just delete your `Terraria.exe` and rename `Terraria.exe.bak` to `Terraria.exe`.
+
 ## Usage
 ### Manual
 Download `patcher.py` and run it using `python patcher.py <PATH_TO_TERRARIA_EXE>`. If you find it more convenient, use one of the commands below.
@@ -30,7 +33,7 @@ Adapt the path to terraria exe
 powershell -NoProfile -ExecutionPolicy ByPass -Command "& { (Invoke-WebRequest -Uri https://raw.githubusercontent.com/drzbida/terarria-zoom-patcher/refs/heads/main/patcher.py).Content | python - '<PATH_TO_TERRARIA_EXE>' }"
 ```
 
-### Screenshots
+### Screenshots (3440x1440)
 Pre-fix (zoom "100%" / normal 177%):
 ![image](https://github.com/user-attachments/assets/0cd47ca2-2750-4a97-9cb4-6dbf2a738eef)
 
