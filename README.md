@@ -1,6 +1,6 @@
 Version agnostic zoom patcher for terraria. Useful for ultrawide/widescreen monitor users, because Terraria doesn't handle zoom well for those (you will see less content on the screen than on a normal monitor). Unless terraria itself adresses this issue or receives some huge engine changes, this script will work on upcoming updates.
 
-If you don't want to use this script, you can check out this [Reddit post](https://github.com/drzbida/terarria-zoom-patcher/blob/main/README.md#reddit-post)
+If you don't want to use this script, you can check out this [Reddit post](https://github.com/byddha/terarria-zoom-patcher/blob/main/README.md#reddit-post)
 
 ## Requirements:
 Python available in PATH
@@ -17,20 +17,20 @@ Download `patcher.py` and run it using `python patcher.py <PATH_TO_TERRARIA_EXE>
 ### Linux
 Adapt the path to terraria exe
 ```bash
-curl -sSL https://raw.githubusercontent.com/drzbida/terarria-zoom-patcher/refs/heads/main/patcher.py | python - <PATH_TO_TERRARIA_EXE>
+curl -sSL https://raw.githubusercontent.com/byddha/terarria-zoom-patcher/refs/heads/main/patcher.py | python - <PATH_TO_TERRARIA_EXE>
 ```
 
 Alternatively, if you have fd
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/drzbida/terarria-zoom-patcher/refs/heads/main/patcher.py | python - $(fd Terraria.exe --base-directory / --absolute-path)
+curl -sSL https://raw.githubusercontent.com/byddha/terarria-zoom-patcher/refs/heads/main/patcher.py | python - $(fd Terraria.exe --base-directory / --absolute-path)
 ```
 
 ### Windows
 
 Adapt the path to terraria exe
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -Command "& { (Invoke-WebRequest -Uri https://raw.githubusercontent.com/drzbida/terarria-zoom-patcher/refs/heads/main/patcher.py).Content | python - '<PATH_TO_TERRARIA_EXE>' }"
+powershell -NoProfile -ExecutionPolicy ByPass -Command "& { (Invoke-WebRequest -Uri https://raw.githubusercontent.com/byddha/terarria-zoom-patcher/refs/heads/main/patcher.py).Content | python - '<PATH_TO_TERRARIA_EXE>' }"
 ```
 
 ### Screenshots (3440x1440)
