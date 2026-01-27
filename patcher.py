@@ -5,6 +5,7 @@ Terraria zoom patcher for ultrawide/high-res monitors.
 Patches:
 1. ForcedMinimumZoom = 1.0 (removes forced zoom-in)
 2. Removes render target 1920x1200 cap (prevents culling artifacts)
+3. [optional] 4096 -> 8192 limit (for 32:9 / 8K monitors)
 """
 
 import sys
@@ -15,6 +16,33 @@ import shutil
 def die(msg):
     print(f"[!] {msg}")
     sys.exit(1)
+
+
+def find_and_patch_8k_limit(data):
+    """Patch 4096 limits to 8192 for 32:9 / 8K support"""
+    # pattern: ldc.i4 4096 (20 00 10 00 00) + stsfld (80)
+    # three consecutive: maxScreenW, maxScreenH, _renderTargetMaxSize
+
+    pattern = b"\x20\x00\x10\x00\x00\x80"
+    new_val = b"\x20\x00\x20\x00\x00"  # 8192
+
+    pos = data.find(pattern)
+    if pos == -1:
+        print("[*] 4096 limit not found (may already be patched)")
+        return True
+
+    # patch all three (they're consecutive)
+    count = 0
+    for i in range(3):
+        p = data.find(pattern, pos if i == 0 else pos + 1)
+        if p == -1:
+            break
+        print(f"[+] Patching 4096 -> 8192 at {hex(p)}")
+        data[p:p+5] = new_val
+        pos = p + 5
+        count += 1
+
+    return count > 0
 
 
 def find_and_patch_forced_zoom(data):
@@ -92,10 +120,16 @@ def find_and_patch_render_targets(data):
 
 
 def main():
-    if len(sys.argv) < 2:
-        die("Usage: python patcher.py /path/to/Terraria.exe")
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    flags = [a for a in sys.argv[1:] if a.startswith("--")]
 
-    exe_path = sys.argv[1]
+    if len(args) < 1:
+        print("Usage: python patcher.py /path/to/Terraria.exe [--8k]")
+        print("  --8k  Patch 4096->8192 limit for 32:9 / 8K monitors")
+        sys.exit(1)
+
+    exe_path = args[0]
+    enable_8k = "--8k" in flags
     backup_path = f"{exe_path}.bak"
 
     if not os.path.exists(exe_path):
@@ -116,6 +150,9 @@ def main():
         die("Could not find ForcedMinimumZoom calculation")
 
     find_and_patch_render_targets(data)
+
+    if enable_8k:
+        find_and_patch_8k_limit(data)
 
     with open(exe_path, "wb") as f:
         f.write(data)
