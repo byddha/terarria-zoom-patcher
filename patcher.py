@@ -1,28 +1,15 @@
 #!/usr/bin/env python3
 """
-Terraria Zoom Patcher - allows zooming out on ultrawide/high-res monitors.
+Terraria zoom patcher for ultrawide/high-res monitors.
 
-Instead of forcing ForcedMinimumZoom=1.0 (which breaks tile culling at zoom>1.0),
-this patches the GameZoomTarget clamp minimum from 1.0 to 0.5, allowing you to
-set the zoom slider lower to achieve true 1.0x zoom on ultrawide screens.
-
-On a 3440x1440 ultrawide, ForcedMinimumZoom is ~1.79. Setting GameZoomTarget to
-~0.56 gives you actual zoom of 1.79 * 0.56 = 1.0, showing more of the world.
+Patches:
+1. ForcedMinimumZoom = 1.0 (removes forced zoom-in)
+2. Removes render target 1920x1200 cap (prevents culling artifacts)
 """
 
 import sys
 import os
 import shutil
-import re
-
-# Pattern: ldc.r4 1.0f, ldc.r4 2.0f (the clamp bounds)
-# 22 = ldc.r4 opcode, 00 00 80 3f = 1.0f, 00 00 00 40 = 2.0f
-CLAMP_PATTERN = rb"\x22\x00\x00\x80\x3f\x22\x00\x00\x00\x40"
-
-# 1.0f = 00 00 80 3f, 0.5f = 00 00 00 3f (change 0x80 to 0x00 at offset +3)
-OLD_FLOAT = 0x80
-NEW_FLOAT = 0x00
-FLOAT_OFFSET = 3  # offset within the ldc.r4 instruction to the byte we change
 
 
 def die(msg):
@@ -30,28 +17,78 @@ def die(msg):
     sys.exit(1)
 
 
-def find_zoom_clamps(data):
-    """Find clamp(1.0, 2.0) patterns that are related to GameZoomTarget."""
-    candidates = []
+def find_and_patch_forced_zoom(data):
+    """Replace ForcedMinimumZoom = Math.Max(...) with ForcedMinimumZoom = 1.0f"""
+    pos = 0
+    while True:
+        pos = data.find(b"\x80", pos)  # stsfld opcode
+        if pos == -1:
+            return False
 
-    for m in re.finditer(CLAMP_PATTERN, data):
-        pos = m.start()
-        # Check context after: should be call + stsfld (for keyboard zoom)
-        # or call + mul + newobj (for GameViewMatrix.Zoom)
-        after = data[pos+10:pos+20]
+        # field token 0x040009XX = Main class static fields
+        if pos + 5 <= len(data) and data[pos+4] == 0x04 and data[pos+3] == 0x00 and data[pos+2] == 0x09:
+            before = data[pos-30:pos]
 
-        # call opcode is 0x28
-        if len(after) >= 5 and after[0] == 0x28:
-            # After the call, check for stsfld (0x80) or mul (0x5a)
-            call_end = 5
-            next_op = after[call_end] if len(after) > call_end else 0
+            # two Math.Max calls before stsfld
+            if before.count(b"\x28") >= 2 and b"\x00\x0a" in before:
+                calc_region = data[pos-70:pos]
+                if b"\x22\x00\x00\x80\x3f" in calc_region:  # ldc.r4 1.0f
+                    # find calc start: ldsfld screenWidth + conv.r4
+                    for i in range(pos-70, pos-20):
+                        if (data[i] == 0x7e and data[i+4] == 0x04 and
+                            data[i+3] == 0x00 and data[i+5] == 0x6b):
+                            calc_start = i
+                            calc_end = pos + 5
+                            field_token = data[pos+1:pos+5]
 
-            if next_op == 0x80:  # stsfld - this is keyboard zoom
-                candidates.append(("keyboard_zoom", pos))
-            elif next_op == 0x5a:  # mul - this is GameViewMatrix.Zoom
-                candidates.append(("view_matrix_zoom", pos))
+                            print(f"[+] Found ForcedMinimumZoom calculation at {hex(calc_start)}-{hex(calc_end)}")
 
-    return candidates
+                            # ldc.r4 1.0f + stsfld + nops
+                            patch = b"\x22\x00\x00\x80\x3f"
+                            patch += b"\x80" + field_token
+                            patch += b"\x00" * (calc_end - calc_start - len(patch))
+
+                            data[calc_start:calc_end] = patch
+                            return True
+        pos += 1
+    return False
+
+
+def find_and_patch_render_targets(data):
+    """Remove Math.Min(backBuffer, MaxWorldViewSize) cap on render targets"""
+    # pattern: ldsfld MaxWorldViewSize; ldfld Point.X/Y; call Math.Min
+    # replace with nops to keep backBuffer value unchanged
+
+    patterns_found = []
+    pos = 0
+    while pos < len(data) - 20:
+        # ldsfld (7e) + ldfld (7b) + call (28), each 5 bytes
+        if (data[pos] == 0x7e and
+            pos + 15 <= len(data) and
+            data[pos + 5] == 0x7b and
+            data[pos + 10] == 0x28):
+
+            call_token = data[pos + 11:pos + 15]
+            if call_token[3] == 0x0a:  # memberref (system method)
+                after = data[pos + 15] if pos + 15 < len(data) else 0
+                if after in [0x0a, 0x0b, 0x0c, 0x0d, 0x13]:  # stloc
+                    field_token = data[pos + 1:pos + 5]
+                    if field_token[3] == 0x04:  # field def
+                        patterns_found.append(pos)
+        pos += 1
+
+    if not patterns_found:
+        print("[*] Render target limit not found (may already be patched)")
+        return True
+
+    print(f"[+] Found {len(patterns_found)} render target limit(s)")
+
+    for pos in patterns_found[:2]:
+        print(f"[+] Patching render target limit at {hex(pos)}")
+        for i in range(15):
+            data[pos + i] = 0x00
+
+    return True
 
 
 def main():
@@ -66,7 +103,6 @@ def main():
 
     print("--- Terraria Zoom Patcher ---")
 
-    # backup
     if not os.path.exists(backup_path):
         print(f"[*] Creating backup: {backup_path}")
         shutil.copy2(exe_path, backup_path)
@@ -76,34 +112,15 @@ def main():
     with open(exe_path, "rb") as f:
         data = bytearray(f.read())
 
-    # find zoom clamp locations
-    clamps = find_zoom_clamps(bytes(data))
+    if not find_and_patch_forced_zoom(data):
+        die("Could not find ForcedMinimumZoom calculation")
 
-    if not clamps:
-        die("No zoom clamp patterns found - wrong terraria version?")
-
-    print(f"[+] Found {len(clamps)} zoom clamp location(s)")
-
-    patched = 0
-    for name, pos in clamps:
-        byte_pos = pos + FLOAT_OFFSET
-        if data[byte_pos] == OLD_FLOAT:
-            print(f"[+] Patching {name} at {hex(pos)} (byte {hex(byte_pos)})")
-            data[byte_pos] = NEW_FLOAT
-            patched += 1
-        else:
-            print(f"[*] {name} at {hex(pos)} already patched or different value")
-
-    if patched == 0:
-        print("[*] Nothing to patch - already patched?")
-        return
+    find_and_patch_render_targets(data)
 
     with open(exe_path, "wb") as f:
         f.write(data)
 
-    print(f"[+] Done! Patched {patched} location(s).")
-    print("[*] Zoom slider minimum changed from 1.0 to 0.5")
-    print("[*] Set zoom to ~56% on ultrawide for true 1.0x zoom")
+    print("[+] Done! Zoom limit removed.")
 
 
 if __name__ == "__main__":
