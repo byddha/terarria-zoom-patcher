@@ -43,8 +43,3 @@ Post-fix (zoom 125%)
 
 Post-fix (zoom 150%)
 ![image](https://github.com/user-attachments/assets/a91b8afb-861a-47f1-b83b-92cf45f38db3)
-
-Replace with: "00 00 F0 55 80 55 0C 00 04 22 00 00 96 44"
-
-I only tested it myself with a 21:9 aspect ratio at 2560x1080 resolution. It works perfectly for me. Good luck for everyone. ;)
-```
