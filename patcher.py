@@ -1,94 +1,72 @@
+#!/usr/bin/env python3
+
 import sys
 import os
-import re
 import shutil
 
-EXE_PATH = sys.argv[1] if len(sys.argv) > 1 else None
-BACKUP_PATH = f"{EXE_PATH}.bak" if EXE_PATH else None
+FORCED_ZOOM_FIELD = b"\xdc\x09\x00\x04"
+SCREEN_WIDTH_FIELD = b"\x7e\xa6\x0c\x00\x04"
+MAX_VIEW_SIZE_FIELD = b"\x7e\xb7\x0a\x00\x04"
 
-# Pattern: 00 00 F0 44 ?? ?? ?? ?? ?? ?? 00 00 96 44
-# The ?? are variable bytes depending on the version
-SEARCH_BYTES = b"\x00\x00\xf0\x44" + b"." * 6 + b"\x00\x00\x96\x44"
-
-EXPECTED_BYTE_VAL = 0x44
-REPLACEMENT_BYTE_VAL = 0x55
-
-if not EXE_PATH:
-    print("Usage: python patcher.py /path/to/Terraria.exe")
+def die(msg):
+    print(f"[!] {msg}")
     sys.exit(1)
 
-if not os.path.exists(EXE_PATH):
-    print(f"[!] Error: File not found: {EXE_PATH}")
-    sys.exit(1)
+def main():
+    if len(sys.argv) < 2:
+        die("Usage: python patcher.py /path/to/Terraria.exe")
 
-print("--- Terraria Zoom Patcher ---")
+    exe_path = sys.argv[1]
+    backup_path = f"{exe_path}.bak"
 
-if not os.path.exists(BACKUP_PATH):
-    print(f"[*] Creating backup: {BACKUP_PATH}")
-    try:
-        shutil.copy2(EXE_PATH, BACKUP_PATH)
-    except Exception as e:
-        print(f"[!] Error creating backup: {e}")
-        sys.exit(1)
-else:
-    print(f"[*] Backup already exists: {BACKUP_PATH}")
+    if not os.path.exists(exe_path):
+        die(f"File not found: {exe_path}")
 
-print("[*] Reading executable...")
-try:
-    with open(EXE_PATH, "rb") as f:
+    print("--- Terraria Zoom Patcher ---")
+
+    # backup
+    if not os.path.exists(backup_path):
+        print(f"[*] Creating backup: {backup_path}")
+        shutil.copy2(exe_path, backup_path)
+    else:
+        print(f"[*] Backup exists: {backup_path}")
+
+    with open(exe_path, "rb") as f:
         data = bytearray(f.read())
-except Exception as e:
-    print(f"[!] Error reading file: {e}")
-    sys.exit(1)
 
-print("[*] Searching for default resolution limit pattern...")
-matches_found = 0
-patches_applied = 0
+    # find stsfld ForcedMinimumZoom
+    stsfld = data.find(b"\x80" + FORCED_ZOOM_FIELD)
+    if stsfld == -1:
+        die("ForcedMinimumZoom field not found - wrong terraria version?")
 
-for match in re.finditer(SEARCH_BYTES, data, re.DOTALL):
-    matches_found += 1
-    offset = match.start()
-    print(f"\n  [+] Found potential limit signature at {hex(offset)}.")
+    print(f"[+] Found ForcedMinimumZoom store at {hex(stsfld)}")
 
-    pos1 = offset + 3
-    pos2 = offset + 13
-    patched_here = False
+    # find calculation start (ldsfld screenWidth, conv.r4, ldsfld MaxWorldViewSize)
+    calc_start = None
+    for i in range(stsfld - 70, stsfld - 30):
+        if data[i:i+5] == SCREEN_WIDTH_FIELD and data[i+5] == 0x6b:  # conv.r4
+            if data[i+6:i+11] == MAX_VIEW_SIZE_FIELD:
+                calc_start = i
+                break
 
-    if data[pos1] == EXPECTED_BYTE_VAL:
-        print(f"    - Patching Max Width at {hex(pos1)}: Unlocking limit (44 -> 55).")
-        data[pos1] = REPLACEMENT_BYTE_VAL
-        patched_here = True
-    else:
-        print(
-            f"    - Skipping Max Width ({hex(pos1)}): Found 0x{data[pos1]:X} (Expected 0x44)."
-        )
+    if not calc_start:
+        die("Could not find calculation start - wrong terraria version?")
 
-    if data[pos2] == EXPECTED_BYTE_VAL:
-        print(f"    - Patching Max Height at {hex(pos2)}: Unlocking limit (44 -> 55).")
-        data[pos2] = REPLACEMENT_BYTE_VAL
-        patched_here = True
-    else:
-        print(
-            f"    - Skipping Max Height ({hex(pos2)}): Found 0x{data[pos2]:X} (Expected 0x44)."
-        )
+    calc_end = stsfld + 5
+    calc_len = calc_end - calc_start
+    print(f"[+] Patching {calc_len} bytes at {hex(calc_start)}")
 
-    if patched_here:
-        patches_applied += 1
+    # replace with: ldc.r4 1.0f; stsfld ForcedMinimumZoom; nop*
+    patch = b"\x22\x00\x00\x80\x3f"  # ldc.r4 1.0f
+    patch += b"\x80" + FORCED_ZOOM_FIELD  # stsfld
+    patch += b"\x00" * (calc_len - len(patch))  # nops
 
-if matches_found == 0:
-    print("\n[!] Default resolution pattern not found. No changes made.")
-    sys.exit(0)
+    data[calc_start:calc_end] = patch
 
-if patches_applied == 0:
-    print("\n[*] Pattern found, but no changes needed (likely already patched).")
-    sys.exit(0)
+    with open(exe_path, "wb") as f:
+        f.write(data)
 
-print(f"\n[*] Writing {patches_applied} change(s) to Terraria.exe...")
-try:
-    with open(EXE_PATH, "wb") as f:
-        _ = f.write(data)
-    print("\n[+] Success! Terraria's resolution limits are unlocked.")
-except Exception as e:
-    print(f"[!] Error writing file: {e}")
-    print("[!] CRITICAL: Please restore your game from the .bak file.")
-    sys.exit(1)
+    print("[+] Done! Zoom limit removed.")
+
+if __name__ == "__main__":
+    main()
