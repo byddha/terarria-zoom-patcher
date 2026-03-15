@@ -13,6 +13,12 @@ Python available in PATH
 python patcher.py <PATH_TO_TERRARIA_EXE>
 ```
 
+For displays exceeding 4096 in any dimension (e.g. 5120x1440 super ultrawide, 7680x4320 8K):
+
+```bash
+python patcher.py <PATH_TO_TERRARIA_EXE> --8k
+```
+
 > [!NOTE]
 > Windows users: check if python is installed with `python --version`. If not, install with `winget install Python`.
 
@@ -33,6 +39,11 @@ The script creates `Terraria.exe.bak` before patching. To restore, delete `Terra
 Flips `SupportWideScreen` from `false` to `true` in Main's static initializer. With this enabled, the game:
 1. Sets `ForcedMinimumZoom = 1.0` - removes forced zoom-in
 2. Raises render target cap from 1920 to 4096 (on HiDef profile) - fixes culling at low zoom
+
+With `--8k`, additionally patches the 4096 caps to 8192:
+
+3. `maxScreenW`, `maxScreenH`, `_renderTargetMaxSize` in `SetGraphicsProfileInternal` - allows window/backbuffer sizes above 4096
+4. Render target dimension cap in `InitTargets` - allows world rendering above 4096
 
 ## Screenshots (3440x1440)
 
